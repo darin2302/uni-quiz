@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="bg">
+<head>
+<script src="gate.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Подготовка за изпити</title>
+<style>
+:root{
+  --bg:#f3f4f6;--panel:#ffffff;--panel2:#f8f9fb;--text:#1d2125;--muted:#5f6b76;--border:#d8dde3;
+  --accent:#0f6cbf;--accent-ink:#ffffff;--accent-soft:#e7f0fa;
+  --shadow:0 1px 2px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#14171b;--panel:#1d2126;--panel2:#23282e;--text:#e6e8eb;--muted:#9aa4ae;--border:#353b42;
+    --accent:#5aa9ff;--accent-ink:#0b1a2b;--accent-soft:#1d3047;--shadow:none;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+main{max-width:860px;margin:0 auto;padding:32px 16px 60px}
+h1{font-size:1.7rem;margin:0 0 4px}
+.muted{color:var(--muted)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin:24px 0}
+.card{display:flex;flex-direction:column;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:18px;box-shadow:var(--shadow);color:inherit;text-decoration:none;transition:border-color .15s}
+.card:hover,.card:focus-visible{border-color:var(--accent);outline:none}
+.tag{align-self:flex-start;font-size:.8rem;font-weight:700;padding:2px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.card h2{font-size:1.12rem;margin:0}
+.card p{margin:0;color:var(--muted);font-size:.93rem}
+.go{margin-top:auto;padding-top:6px;color:var(--accent);font-weight:600}
+.note{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px 16px;font-size:.93rem;color:var(--muted)}
+.note b{color:var(--text)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Подготовка за изпити</h1>
+  <div class="muted">Тестове с въпроси a–d, резюмета по теми и пробни изпити с таймер, като в Moodle.</div>
+
+  <div class="grid">
+    <a class="card" href="kgvr/">
+      <span class="tag">КГВР</span>
+      <h2>Компютърна графика и виртуална реалност</h2>
+      <p><span data-count="kgvr">600</span> въпроса · <span data-lecs="kgvr">12</span> лекции · примерен тест</p>
+      <span class="go">Към тестовете →</span>
+    </a>
+    <a class="card" href="tsp/">
+      <span class="tag">ТСП</span>
+      <h2>Софтуерни технологии</h2>
+      <p><span data-count="tsp">500</span> въпроса · <span data-lecs="tsp">10</span> теми</p>
+      <span class="go">Към тестовете →</span>
+    </a>
+  </div>
+
+  <div class="note">
+    <b>Прогресът се пази в браузъра</b> — резултати, грешни въпроси и история остават само на това устройство.
+    За да ги пренесеш на друго устройство, отвори „Моят прогрес“ в съответния тест, натисни „Експорт“ и постави кода с „Импорт“ там.
+  </div>
+</main>
+</body>
+</html>
