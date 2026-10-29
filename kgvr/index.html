@@ -305,6 +305,7 @@ function startQuiz(key, title, qs) {
     idx: 0, start: Date.now(), end: Date.now() + items.length * SEC_PER_Q * 1000,
     instant: settings.instant, done: false
   };
+  setHash('#/quiz', /^#\/(quiz|results)$/.test(location.hash));
   startTimer();
   renderQ();
 }
@@ -344,7 +345,7 @@ function renderQ() {
       <div><div class="muted" style="font-size:.85rem">КГВР</div><h1 style="font-size:1.25rem">${esc(Q.title)}</h1></div>
       <div class="row">
         <div class="timer" id="timer">Оставащо време ${fmt((Q.end - Date.now()) / 1000)}</div>
-        <button class="btn ghost" data-act="quit">← Начало</button>
+        <button class="btn ghost" data-act="quit">← Назад</button>
       </div>
     </div>
     <div class="quiz">
@@ -414,6 +415,7 @@ function finish(auto) {
     if (!b || s / Q.items.length > b.s / b.t) { best[Q.key] = { s, t: Q.items.length }; store.set(PFX + '-best', best); }
   }
   recordAttempt(s);
+  setHash('#/results', true);
   results(auto);
 }
 
@@ -439,7 +441,7 @@ function results(auto) {
   }).join('');
   render(`
     <div class="topbar">
-      <button class="btn ghost" data-act="home">← Начало</button>
+      <button class="btn ghost" data-act="back">← Назад</button>
       <div class="row">
         <button class="btn" data-act="retry">Опитай отново</button>
         <button class="btn primary" data-act="retrywrong" ${wrongIdx.length ? '' : 'disabled'}>Само грешните (${wrongIdx.length})</button>
@@ -632,8 +634,9 @@ function mockExam(n) {
 }
 
 const actions = {
-  home: () => home(),
-  progress: () => progress(),
+  home: () => nav('#/'),
+  back: () => back(),
+  progress: () => nav('#/progress'),
   rename: () => { editName = true; home(); const i = document.getElementById('nameIn'); if (i) { i.focus(); i.select(); } },
   saveName: () => setName(document.getElementById('nameIn').value),
   skipName: () => { if (editName) { editName = false; home(); } else setName('Гост'); },
@@ -650,7 +653,7 @@ const actions = {
     if (r.ok) progress(r); else progMsg(false, r.text);
   },
   theme: () => { theme = { auto: 'light', light: 'dark', dark: 'auto' }[theme]; store.set(PFX + '-theme', theme); applyTheme(); home(); },
-  sum: b => summary(+b.dataset.l),
+  sum: b => nav('#/sum/' + b.dataset.l),
   test: b => { const l = DATA.lectures.find(x => x.num === +b.dataset.l); startQuiz(`L${pad(l.num)}-${b.dataset.t}`, `Лекция ${l.num} · Тест ${b.dataset.t}`, l.tests[b.dataset.t]); },
   allq: b => { const l = DATA.lectures.find(x => x.num === +b.dataset.l); const qs = l.testNames.flatMap(t => l.tests[t]); startQuiz(`L${pad(l.num)}-ALL`, `Лекция ${l.num} · всички ${qs.length} въпроса`, shuffle(qs)); },
   mock: () => mockExam(+document.getElementById('mockN').value),
@@ -662,7 +665,7 @@ const actions = {
   next: () => { if (Q.idx < Q.items.length - 1) { Q.idx++; renderQ(); } },
   flag: () => { Q.flags[Q.idx] = !Q.flags[Q.idx]; renderQ(); },
   finish: () => finish(false),
-  quit: () => { if (Q && !Q.done && Q.answers.some(a => a !== null) && !confirm('Опитът не е приключен. Да изляза ли?')) return; home(); },
+  quit: () => { if (Q && !Q.done && Q.answers.some(a => a !== null) && !confirm('Опитът не е приключен. Да изляза ли?')) return; leaving = true; stopTimer(); Q = null; back(); },
   retry: () => startQuiz(Q.key, Q.title, Q.src),
   retrywrong: () => { const qs = Q.wrongIdx.map(i => BY_ID[Q.items[i].id]); startQuiz(null, `${Q.title} · само грешните`, qs); }
 };
@@ -689,7 +692,39 @@ document.addEventListener('keydown', e => {
   else if (k === 'f') actions.flag();
 });
 
-home();
+/* ---------- Навигация (бутонът „Назад“ на браузъра) ---------- */
+// #/ начало · #/sum/N резюме · #/progress прогрес · #/quiz тест · #/results резултат
+let leaving = false;
+function setHash(h, replace) {
+  if (location.hash === h) return;
+  history[replace ? 'replaceState' : 'pushState']({ app: 1 }, '', h);
+}
+function nav(h) { setHash(h); route(); }
+function back() {
+  // тестът/резултатът се отварят от начало или резюме, затова „Назад“ връща там
+  if (history.state && history.state.app) { leaving = true; history.back(); } else { setHash('#/', true); route(); }
+}
+function route() {
+  const h = location.hash, m = /^#\/sum\/(\d+)$/.exec(h);
+  if (m && DATA.lectures.some(l => l.num === +m[1])) return summary(+m[1]);
+  if (h === '#/progress') return progress();
+  if (h === '#/quiz' && Q && !Q.done) { startTimer(); return renderQ(); }
+  if (h === '#/results' && Q && Q.done) return results(false);
+  if (h && h !== '#/') history.replaceState(null, '', '#/');
+  home();
+}
+window.addEventListener('popstate', () => {
+  if (!leaving && Q && !Q.done && location.hash !== '#/quiz' && Q.answers.some(a => a !== null)
+      && !confirm('Опитът не е приключен. Да изляза ли?')) {
+    history.pushState({ app: 1 }, '', '#/quiz');
+    return;
+  }
+  leaving = false;
+  route();
+});
+
+
+route();
 </script>
 </body>
 </html>
