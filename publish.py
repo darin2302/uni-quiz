@@ -1,7 +1,7 @@
-"""Builds both quizzes and copies them into this site folder.
+"""Builds all quizzes and copies them into this site folder.
 
 Usage:
-    python publish.py                     # rebuild + copy kgvr/ and tsp/
+    python publish.py                     # rebuild + copy kgvr/, tsp/, okk/, oks/
     python publish.py --password NEW      # same, and set a new site password
 
 Then commit and push. Stdlib only.
@@ -18,10 +18,21 @@ import sys
 SITE = pathlib.Path(__file__).resolve().parent
 UNI = SITE.parent
 
+
+def src(*parts):
+    """Папка с източниците: до сайта или едно ниво по-нагоре (ако сайтът е разархивиран в подпапка)."""
+    for base in (UNI, UNI.parent):
+        if base.joinpath(*parts).exists():
+            return base.joinpath(*parts)
+    return UNI.joinpath(*parts)
+
+
 # (папка в сайта, папка с build_quiz.py)
 QUIZZES = [
-    ("kgvr", UNI / "kgvr" / "study"),
-    ("tsp", UNI / "st" / "study"),
+    ("kgvr", src("kgvr", "study")),
+    ("tsp", src("st", "study")),
+    ("okk", src("ОКК", "study")),
+    ("oks", src("ОКС", "study")),
 ]
 
 HEAD_INJECT = '<script src="../gate.js"></script>\n<meta name="robots" content="noindex, nofollow">\n'
@@ -75,6 +86,10 @@ def main():
 
     stats = {}
     for name, study in QUIZZES:
+        if not (study / "build_quiz.py").exists():
+            # източниците ги няма на тази машина - оставяме публикуваната версия
+            print(f"skip: {study} not found, keeping {name}/index.html", flush=True)
+            continue
         build(study)
         html = (study / "quiz.html").read_text(encoding="utf8")
         stats[name] = counts(html)
