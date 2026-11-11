@@ -134,6 +134,13 @@ table.ans td,table.ans th{border-bottom:1px solid var(--border);padding:6px 8px;
 table.ans th{color:var(--muted);font-weight:600;font-size:.84rem}
 table.ans td.v{font-family:ui-monospace,Consolas,monospace;word-break:break-all}
 .selfgrade{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border-radius:7px;background:var(--panel2);border:1px solid var(--border)}
+.work.big{min-height:170px;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+.essay .mark{font-size:.88rem;color:var(--muted);margin-top:6px}
+ul.kp{margin:6px 0 4px;padding-left:20px;font-size:.93rem}
+ul.kp li{margin:2px 0}
+ul.kp li.y{color:var(--ok)}
+ul.kp li.n{color:var(--bad)}
+.tmd svg{max-width:100%;height:auto;background:#fff;border-radius:8px;border:1px solid var(--border)}
 pre.mywork{white-space:pre-wrap;background:var(--code);padding:8px 10px;border-radius:7px;font-size:.88rem;margin:6px 0}
 
 /* results */
@@ -213,6 +220,8 @@ const SEC_PER_TASK = C.secPerTask || 600;
 const EX = C.exam;
 const TASKS = DATA.tasks || [];
 const GROUPS = DATA.taskGroups || [];
+const TASK_WORD = C.taskWord || 'Задача';          // как се казва писменият елемент
+const TASKS_TITLE = C.tasksTitle || 'Писмени задачи';
 
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
@@ -248,7 +257,11 @@ const ptsTxt = n => String(Math.round(n * 10) / 10).replace('.', ',');
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function lecName(n) { if (!n) return 'Примерен тест'; const l = DATA.lectures.find(x => x.num === n); return C.lecWord + ' ' + n + ' — ' + l.short; }
 function groupOf(key) { return GROUPS.find(g => g.key === key); }
-function itemTag(q) { return q.isTask ? `Задача · ${esc(groupOf(q.group).title)} · ${C.lecWord} ${q.lec}` : esc(lecName(q.lec)); }
+function itemTag(q) {
+  if (!q.isTask) return esc(lecName(q.lec));
+  const g = groupOf(q.group);
+  return `${TASK_WORD} · ${esc(g.title)}${g.title.startsWith(C.lecWord) ? '' : ` · ${C.lecWord} ${q.lec}`}${q.src ? ` · <span class="badge half">${esc(q.src)}</span>` : ''}`;
+}
 function render(html) { app.innerHTML = html; window.scrollTo(0, 0); }
 function fmt(sec) { sec = Math.max(0, Math.round(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60; return h + ':' + pad(m) + ':' + pad(s); }
 
@@ -329,6 +342,18 @@ function checkField(fd, val) {
   if (!val.trim()) return { credit: 0, note: 'няма отговор' };
   if (fd.type === 'num') return normNum(val) === normNum(fd.answer) ? { credit: 1 } : { credit: 0 };
   if (fd.type === 'code') return normCode(val) === normCode(fd.answer) ? { credit: 1 } : { credit: 0 };
+  if (fd.type === 'real') {
+    const x = parseFloat(latin(val).replace(',', '.').replace(/[^0-9eE+\-.]/g, ''));
+    if (isNaN(x)) return { credit: 0, note: 'не е число' };
+    const tol = Math.max(fd.abs || 0.011, Math.abs(fd.answer) * (fd.tol || 0.01));
+    return Math.abs(x - fd.answer) <= tol ? { credit: 1 } : { credit: 0 };
+  }
+  if (fd.type === 'essay') {
+    const t = val.toLowerCase(); // без latin(): тук кирилицата трябва да остане кирилица
+    const hit = fd.points.map(pt => pt.kw.some(k => t.includes(k.toLowerCase())));
+    const n = hit.filter(Boolean).length;
+    return { credit: n / fd.points.length, hit, note: `засегнати ключови моменти: ${n} от ${fd.points.length}` };
+  }
   if (fd.type === 'set') { const a = parseSet(val), b = fd.answer; return a.length === b.length && a.every((x, i) => x === b[i]) ? { credit: 1 } : { credit: 0 }; }
   if (fd.type === 'bool') {
     let r;
@@ -343,7 +368,16 @@ function checkField(fd, val) {
   }
   return { credit: 0 };
 }
-function fieldAnswer(fd) { return fd.type === 'set' ? fd.answer.join(', ') : fd.type === 'bool' ? '' : fd.answer; }
+function fieldAnswer(fd) {
+  if (fd.type === 'set') return fd.answer.join(', ');
+  if (fd.type === 'bool' || fd.type === 'essay') return '';
+  if (fd.type === 'real') return String(fd.shown || fd.answer).replace('.', ',');
+  return fd.answer;
+}
+const isEssay = t => t.fields.every(fd => fd.type === 'essay');
+function pointsList(fd, m) {
+  return `<ul class="kp">${fd.points.map((pt, k) => `<li class="${m && m.hit ? (m.hit[k] ? 'y' : 'n') : ''}">${m && m.hit ? (m.hit[k] ? '✓ ' : '✗ ') : ''}${inl(pt.t)}</li>`).join('')}</ul>`;
+}
 function autoTask(t, a) {
   const marks = t.fields.map((fd, k) => checkField(fd, a && a.f ? a.f[k] : ''));
   const sum = marks.reduce((s, m) => s + m.credit, 0);
@@ -353,17 +387,27 @@ const HINT = {
   num: 'само цифрите; водещите нули и индексът на основата не са задължителни',
   code: 'във вида знак|цифри, напр. 1|0011',
   set: 'номерата, разделени със запетая, напр. 1, 3, 4',
-  bool: "напр. AB' + C'D — отрицание с ' или ! или ¬; И без знак или с ·; ИЛИ с +"
+  bool: "напр. AB' + C'D — отрицание с ' или ! или ¬; И без знак или с ·; ИЛИ с +",
+  real: 'число (десетична запетая или точка); приема се отклонение до ±1%',
+  essay: C.essayHint || 'Отговор в 3–4 изречения.'
 };
 
 /* ---------- Начало ---------- */
 function examCard() {
   const total = EX.q * EX.ptsQ + EX.tasks * EX.ptsTask;
   const forward = `<label class="toggle"><input type="checkbox" id="setForward" ${settings.forward ? 'checked' : ''}> Само напред, без връщане (като на изпита)</label>`;
+  if (EX.tasks && !EX.q) {
+    return `<div class="card">
+        <h3>Пробен изпит</h3>
+        <p>${EX.tasks} × ${EX.ptsTask} т. = ${total} т. · ${EX.minutes} мин, като на изпита. По един въпрос от различни теми.</p>
+        <div class="row"><input type="hidden" id="mockN" value="tasks"><button class="btn primary" data-act="mock">Започни</button></div>
+        ${forward}
+      </div>`;
+  }
   if (EX.tasks) {
     return `<div class="card">
         <h3>Пробен изпит</h3>
-        <p>${EX.q} въпроса a–d × ${EX.ptsQ} т. + ${EX.tasks} задачи × ${EX.ptsTask} т. = ${total} т. · ${EX.minutes} мин, като на изпита.</p>
+        <p>${EX.q} въпроса a–d × ${EX.ptsQ} т. + ${EX.tasks} ${EX.tasks === 1 ? 'задача' : 'задачи'} × ${EX.ptsTask} т. = ${total} т. · ${EX.minutes} мин, като на изпита.</p>
         <div class="row">
           <select id="mockN" aria-label="Вид пробен изпит">
             <option value="full">Пълен изпит (${EX.minutes} мин)</option>
@@ -400,15 +444,15 @@ function home() {
     </div>`).join('');
   const groups = GROUPS.map((g, i) => `
     <div class="lec">
-      <div class="lec-h"><span class="num">${i + 1}</span><span><span class="lec-t">${esc(g.title)}</span> <span class="muted" style="font-size:.85rem">· ${C.lecWord.toLowerCase()} ${g.lec} · ${g.n} задачи</span></span></div>
+      <div class="lec-h"><span class="num">${i + 1}</span><span><span class="lec-t">${esc(g.title)}</span> <span class="muted" style="font-size:.85rem">· ${g.title.startsWith(C.lecWord) ? '' : C.lecWord.toLowerCase() + ' ' + g.lec + ' · '}${g.n} ${TASK_WORD === 'Задача' ? 'задачи' : 'въпроса'}</span></span></div>
       <div class="row">
-        <button class="btn" data-act="task1" data-g="${g.key}">Случайна задача</button>
+        <button class="btn" data-act="task1" data-g="${g.key}">${TASK_WORD === 'Задача' ? 'Случайна задача' : 'Случаен въпрос'}</button>
         <button class="btn ghost" data-act="taskall" data-g="${g.key}" title="Всички задачи от групата, в случаен ред">Всички ${g.n} ${badge('T-' + g.key)}</button>
       </div>
     </div>`).join('');
   render(`
     <div class="topbar">
-      <div><h1>${esc(C.name)} — подготовка за изпита</h1><div class="muted">${ALL.length} въпроса от ${DATA.lectures.length} ${C.lecWord === 'Лекция' ? 'лекции' : 'теми'}${TASKS.length ? ` · ${TASKS.length} писмени задачи с решения` : ''} · по 1 верен отговор от a–d</div></div>
+      <div><h1>${esc(C.name)} — подготовка за изпита</h1><div class="muted">${ALL.length} въпроса a–d от ${DATA.lectures.length} ${C.lecWord === 'Лекция' ? 'лекции' : 'теми'}${TASKS.length ? ` · ${TASKS.length} ${TASK_WORD === 'Задача' ? 'писмени задачи с решения' : 'въпроса с отворен отговор и примерни отговори'}` : ''}</div></div>
       <div class="row">
         ${userName !== null ? `<span class="who" id="who">Профил: <b>${esc(userName)}</b> · <button class="linkbtn" data-act="rename">смени</button></span>` : ''}
         <button class="btn ghost" data-act="theme">${THEME_LABEL[theme]}</button>
@@ -439,8 +483,8 @@ function home() {
       <label class="toggle"><input type="checkbox" id="setShuffle" ${settings.shuffle ? 'checked' : ''}> Разбъркай реда на отговорите a–d</label>
       <div class="row" style="margin-top:8px"><button class="btn ghost" data-act="reset">Изчисти прогреса</button></div>
     </div>
-    ${GROUPS.length ? `<h2>Писмени задачи</h2>
-    <p class="muted" style="margin-top:-4px">Въвеждаш крайните отговори (проверяват се автоматично) и решението си. След това виждаш пълното решение стъпка по стъпка и сам си поставяш точките (0–${EX.ptsTask}).</p>
+    ${GROUPS.length ? `<h2>${esc(TASKS_TITLE)}</h2>
+    <p class="muted" style="margin-top:-4px">${C.tasksIntro ? esc(C.tasksIntro) : `Въвеждаш крайните отговори (проверяват се автоматично) и решението си. След това виждаш пълното решение стъпка по стъпка и сам си поставяш точките (0–${EX.ptsTask}).`}</p>
     ${groups}` : ''}
     <h2>${C.lecWord === 'Лекция' ? 'Лекции' : 'Теми'}</h2>
     ${lecs}
@@ -464,7 +508,7 @@ function summary(n) {
     <div class="md">${md(l.summary)}</div>
     <div class="row" style="margin-top:16px">
       ${l.testNames.map(t => `<button class="btn primary" data-act="test" data-l="${n}" data-t="${t}">Тест ${t}</button>`).join('')}
-      ${tg.map(g => `<button class="btn" data-act="task1" data-g="${g.key}">Задача: ${esc(g.title)}</button>`).join('')}
+      ${tg.map(g => `<button class="btn" data-act="taskall" data-g="${g.key}">${TASK_WORD === 'Задача' ? 'Задачи: ' + esc(g.title) : 'Отворени въпроси (' + g.n + ')'}</button>`).join('')}
     </div>
   `);
 }
@@ -533,6 +577,10 @@ function taskBody(it, q, a, locked) {
       const right = fieldAnswer(fd);
       mark = `<div class="mark" style="color:var(--${cls === 'ok' ? 'ok' : cls === 'half' ? 'half' : 'bad'})">${m.credit === 1 ? '✓ Вярно' : m.credit > 0 ? '½ Частично' : '✗ Грешно'}${m.note && m.credit !== 1 ? ' — ' + esc(m.note) : ''}${m.credit < 1 && right ? ` · верен отговор: <code>${esc(right)}</code>` : ''}</div>`;
     }
+    if (fd.type === 'essay') {
+      return `<div class="essay"><textarea class="work big ${cls}" data-f="${k}" spellcheck="true" ${locked ? 'readonly' : ''} placeholder="${esc(HINT.essay)}">${esc(v)}</textarea>
+        ${locked ? `<div class="mark">${esc(res.marks[k].note)}</div>${pointsList(fd, res.marks[k])}` : `<span class="hint">${HINT.essay}</span>`}</div>`;
+    }
     return `<label class="fld"><span>${esc(fd.label)}</span>
       <input data-f="${k}" value="${esc(v)}" autocomplete="off" spellcheck="false" ${locked ? 'readonly' : ''} class="${cls}">
       ${locked ? mark : `<span class="hint">${HINT[fd.type]}</span>`}</label>`;
@@ -540,10 +588,10 @@ function taskBody(it, q, a, locked) {
   return `
     <div class="tmd">${md(q.text)}</div>
     <div class="fields">${fields}</div>
-    <label class="worklbl" for="work">Решение / чернова (показва се при прегледа; не се проверява автоматично)</label>
-    <textarea class="work" id="work" data-w="1" spellcheck="false" ${locked ? 'readonly' : ''}>${esc(a && a.w || '')}</textarea>
-    ${locked ? `<div class="fb ${res.pts >= EX.ptsTask ? 'good' : res.pts > 0 ? 'half' : 'wrong'}"><b>Автоматична оценка: ${ptsTxt(res.pts)} от ${EX.ptsTask} т.</b></div>
-      <div class="sol tmd"><b>Решение</b>${md(q.solution)}</div>`
+    ${isEssay(q) ? '' : `<label class="worklbl" for="work">Решение / чернова (показва се при прегледа; не се проверява автоматично)</label>
+    <textarea class="work" id="work" data-w="1" spellcheck="false" ${locked ? 'readonly' : ''}>${esc(a && a.w || '')}</textarea>`}
+    ${locked ? `<div class="fb ${res.pts >= EX.ptsTask ? 'good' : res.pts > 0 ? 'half' : 'wrong'}"><b>Автоматична оценка: ${ptsTxt(res.pts)} от ${EX.ptsTask} т.</b>${isEssay(q) ? ' <span>Сравни с примерния отговор и коригирай оценката.</span>' : ''}</div>
+      <div class="sol tmd"><b>${isEssay(q) ? 'Примерен отговор' : 'Решение'}</b>${md(q.solution)}</div>`
       : (Q.instant ? `<div class="row" style="margin-top:10px"><button class="btn primary" data-act="check">Провери</button></div>` : '')}`;
 }
 
@@ -572,7 +620,7 @@ function renderQ() {
   }
   const last = Q.idx === Q.items.length - 1;
   const nQ = Q.items.filter(x => !x.task).length;
-  const label = it.task ? `Задача <b>${Q.idx + 1 - nQ}</b>` : `Въпрос <b>${Q.idx + 1}</b>`;
+  const label = it.task ? `${TASK_WORD} <b>${Q.idx + 1 - nQ}</b>` : `Въпрос <b>${Q.idx + 1}</b>`;
   render(`
     <div class="topbar">
       <div><div class="muted" style="font-size:.85rem">${esc(C.tag)}</div><h1 style="font-size:1.25rem">${esc(Q.title)}</h1></div>
@@ -606,7 +654,7 @@ function renderQ() {
           ${last ? '<button class="btn primary" data-act="finish">Приключване на опита</button>'
                  : '<button class="btn primary" data-act="next">Следваща страница</button>'}
         </div>
-        <div class="kbd">${it.task ? 'Enter в поле → следващото поле' : 'Клавиши: 1–4 избор · ← → навигация · F отбелязване'}</div>
+        <div class="kbd">${it.task ? (isEssay(q) ? '' : 'Enter в поле → следващото поле') : 'Клавиши: 1–4 избор · ← → навигация · F отбелязване'}</div>
       </div>
     </div>
   `);
@@ -687,6 +735,7 @@ function results(auto) {
     const q = BY_ID[it.id], a = Q.answers[i];
     if (it.task) {
       const res = autoTask(q, a), p = Q.taskPts[i];
+      const essay = isEssay(q);
       const rows = q.fields.map((fd, k) => {
         const m = res.marks[k], v = a && a.f ? a.f[k] || '' : '';
         const cls = m.credit === 1 ? 'good' : m.credit > 0 ? 'half' : 'bad';
@@ -696,11 +745,14 @@ function results(auto) {
       }).join('');
       const sel = Array.from({ length: EX.ptsTask * 2 + 1 }, (_, k) => k / 2).map(v => `<option value="${v}" ${v === p ? 'selected' : ''}>${ptsTxt(v)}</option>`).join('');
       return `<div class="rev ${p >= EX.ptsTask ? 'ok' : p > 0 ? 'half' : 'bad'}" id="rev${i}">
-        <div class="lectag">Задача ${i + 1 - nQ} · ${itemTag(q)}</div>
+        <div class="lectag">${itemTag(q).replace(TASK_WORD, TASK_WORD + ' ' + (i + 1 - nQ))}</div>
         <div class="tmd">${md(q.text)}</div>
-        <table class="ans"><thead><tr><th>Поле</th><th>Твоят отговор</th><th>Верен отговор</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+        ${essay ? q.fields.map((fd, k) => `<div class="muted" style="font-size:.88rem">Твоят отговор:</div>
+          <pre class="mywork">${a && a.f && a.f[k] && a.f[k].trim() ? esc(a.f[k]) : '— без отговор —'}</pre>
+          <div class="muted" style="font-size:.88rem">Ключови моменти (${esc(res.marks[k].note)}):</div>${pointsList(fd, res.marks[k])}`).join('')
+        : `<table class="ans"><thead><tr><th>Поле</th><th>Твоят отговор</th><th>Верен отговор</th><th></th></tr></thead><tbody>${rows}</tbody></table>`}
         ${a && a.w && a.w.trim() ? `<div class="muted" style="font-size:.88rem">Твоето решение:</div><pre class="mywork">${esc(a.w)}</pre>` : ''}
-        <details class="sol tmd" ${p < EX.ptsTask ? 'open' : ''}><summary><b>Решение стъпка по стъпка</b></summary>${md(q.solution)}</details>
+        <details class="sol tmd" ${p < EX.ptsTask || essay ? 'open' : ''}><summary><b>${essay ? 'Примерен отговор' : 'Решение стъпка по стъпка'}</b></summary>${md(q.solution)}</details>
         <div class="selfgrade"><span>Автоматично: <b>${ptsTxt(res.pts)}</b> т.</span>
           <label>Точки за задачата: <select data-grade="${i}">${sel}</select> от ${EX.ptsTask}</label></div>
       </div>`;
@@ -902,9 +954,9 @@ function pickMcq(n) {
 }
 // по една задача от всяка група (групите се повтарят, ако задачите са повече от групите)
 function pickTasks(n) {
-  const picks = [];
+  const picks = [], order = n < GROUPS.length ? shuffle(GROUPS) : GROUPS;
   for (let i = 0; picks.length < n; i++) {
-    const g = GROUPS[i % GROUPS.length];
+    const g = order[i % order.length];
     const pool = TASKS.filter(t => t.group === g.key && !picks.includes(BY_ID[t.id]));
     if (pool.length) picks.push(BY_ID[pool[Math.floor(Math.random() * pool.length)].id]);
   }
@@ -918,7 +970,7 @@ function mockExam(kind) {
     return startQuiz(null, `Пробен изпит (${n} въпроса)`, pickMcq(n), { forward });
   }
   if (kind === 'mcq') return startQuiz(null, `Пробен изпит — тест (${EX.q} въпроса)`, pickMcq(EX.q), { forward, pts: EX.ptsQ });
-  if (kind === 'tasks') return startQuiz(null, `Пробен изпит — задачи (${EX.tasks})`, pickTasks(EX.tasks), { forward });
+  if (kind === 'tasks') return startQuiz(null, `Пробен изпит — ${EX.q ? 'задачи' : 'отворени въпроси'} (${EX.tasks})`, pickTasks(EX.tasks), { forward, limit: EX.q ? undefined : EX.minutes * 60 });
   startQuiz(null, `Пробен изпит (${EX.q} въпроса + ${EX.tasks} задачи)`, pickMcq(EX.q).concat(pickTasks(EX.tasks)), { forward, pts: EX.ptsQ, limit: EX.minutes * 60 });
 }
 
@@ -995,7 +1047,7 @@ app.addEventListener('input', e => {
 document.addEventListener('keydown', e => {
   if (e.target.id === 'nameIn') { if (e.key === 'Enter') actions.saveName(); return; }
   if (e.target.dataset && e.target.dataset.f !== undefined) {
-    if (e.key === 'Enter') { e.preventDefault(); const nx = app.querySelector(`[data-f="${+e.target.dataset.f + 1}"]`) || app.querySelector('[data-w]'); if (nx) nx.focus(); }
+    if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); const nx = app.querySelector(`[data-f="${+e.target.dataset.f + 1}"]`) || app.querySelector('[data-w]'); if (nx) nx.focus(); }
     return;
   }
   if (!Q || Q.done || e.ctrlKey || e.metaKey || e.altKey || /^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName)) return;

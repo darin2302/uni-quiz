@@ -1,7 +1,7 @@
 """Builds all quizzes and copies them into this site folder.
 
 Usage:
-    python publish.py                     # rebuild + copy kgvr/, tsp/, okk/, oks/
+    python publish.py                     # rebuild + copy kgvr/, tsp/, okk/, oks/, et/, ka/
     python publish.py --password NEW      # same, and set a new site password
 
 Then commit and push. Stdlib only.
@@ -33,6 +33,8 @@ QUIZZES = [
     ("tsp", src("st", "study")),
     ("okk", src("ОКК", "study")),
     ("oks", src("ОКС", "study")),
+    ("et", src("ЕТ", "study")),
+    ("ka", src("КА", "study")),
 ]
 
 HEAD_INJECT = '<script src="../gate.js"></script>\n<meta name="robots" content="noindex, nofollow">\n'
