@@ -250,8 +250,10 @@ let Q = null, timerId = null;
 
 const pad = n => String(n).padStart(2, '0');
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-const inl = s => esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-const md = s => window.marked ? marked.parse(s) : `<pre style="white-space:pre-wrap">${esc(s)}</pre>`;
+// course.json "subscripts": true → X_L, U_{ab} се показват като индекс (X<sub>L</sub>)
+const subs = s => C.subscripts ? s.replace(/([A-Za-zА-яΣΦΨΔωφψ])_(?:\{([^}]+)\}|([0-9A-Za-zА-я]+))/g, (m, a, b, c) => `${a}<sub>${b || c}</sub>`) : s;
+const inl = s => subs(esc(s).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>'));
+const md = s => window.marked ? marked.parse(subs(s)) : `<pre style="white-space:pre-wrap">${subs(esc(s))}</pre>`;
 const num2 = n => (Math.round(n * 100) / 100).toFixed(2).replace('.', ',');
 const ptsTxt = n => String(Math.round(n * 10) / 10).replace('.', ',');
 function shuffle(a) { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
@@ -581,7 +583,7 @@ function taskBody(it, q, a, locked) {
       return `<div class="essay"><textarea class="work big ${cls}" data-f="${k}" spellcheck="true" ${locked ? 'readonly' : ''} placeholder="${esc(HINT.essay)}">${esc(v)}</textarea>
         ${locked ? `<div class="mark">${esc(res.marks[k].note)}</div>${pointsList(fd, res.marks[k])}` : `<span class="hint">${HINT.essay}</span>`}</div>`;
     }
-    return `<label class="fld"><span>${esc(fd.label)}</span>
+    return `<label class="fld"><span>${subs(esc(fd.label))}</span>
       <input data-f="${k}" value="${esc(v)}" autocomplete="off" spellcheck="false" ${locked ? 'readonly' : ''} class="${cls}">
       ${locked ? mark : `<span class="hint">${HINT[fd.type]}</span>`}</label>`;
   }).join('');
@@ -739,7 +741,7 @@ function results(auto) {
       const rows = q.fields.map((fd, k) => {
         const m = res.marks[k], v = a && a.f ? a.f[k] || '' : '';
         const cls = m.credit === 1 ? 'good' : m.credit > 0 ? 'half' : 'bad';
-        return `<tr><td>${esc(fd.label)}</td><td class="v">${v.trim() ? esc(v) : '<span class="muted">—</span>'}</td>
+        return `<tr><td>${subs(esc(fd.label))}</td><td class="v">${v.trim() ? esc(v) : '<span class="muted">—</span>'}</td>
           <td class="v">${esc(fieldAnswer(fd)) || '<span class="muted">виж решението</span>'}</td>
           <td><span class="badge ${cls}">${m.credit === 1 ? '✓' : m.credit > 0 ? '½' : '✗'}</span>${m.note && m.credit !== 1 ? ` <span class="muted" style="font-size:.85rem">${esc(m.note)}</span>` : ''}</td></tr>`;
       }).join('');
